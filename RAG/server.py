@@ -1,9 +1,17 @@
+from flask import Flask, request, jsonify, render_template
 import os
+import sys
 import json
 import datetime
 import requests
 import subprocess
 from dotenv import load_dotenv
+import threading
+import queue
+import time
+
+# Add RAG folder to path
+# sys.path.append('../')
 
 # Fix tokenizers warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -20,12 +28,17 @@ except ImportError as e:
 load_dotenv()
 
 # ----- .env config -----
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")   # ollama | lmstudio | openai | gemini | deepseek
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
 LLM_API_KEY = os.getenv("LLM_API_KEY", None)
-LOG_FILE = "query_log.txt"
+LOG_FILE = "../query_log.txt"
 # ------------------------
+
+app = Flask(__name__)
+
+# Global conversation history
+conversation_history = []
 
 def run_llm(prompt: str) -> str:
     if LLM_PROVIDER == "ollama":
@@ -81,7 +94,7 @@ def run_lmstudio(prompt: str) -> str:
             text=True, 
             encoding="utf-8",
             errors="replace",
-            timeout=120
+            timeout=60
         )
         
         if result.returncode != 0:
@@ -142,58 +155,94 @@ def run_deepseek(prompt: str) -> str:
 
 
 def log_to_file(message: str):
-    with open(LOG_FILE, "a", encoding="utf-8") as log_f:
-        log_f.write(message + "\n")
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as log_f:
+            log_f.write(message + "\n")
+    except Exception as e:
+        print(f"Error writing to log file: {e}")
 
 
-# Main application loop
-conversation_history = []  # Store previous Q&A pairs
-
-try:
-    print(f"RAG System initialized with {LLM_PROVIDER} ({LLM_MODEL})")
-    print("Ready for queries!")
+def detect_language(text):
+    """Simple language detection based on character sets"""
+    # Persian/Farsi Unicode ranges
+    persian_chars = sum(1 for char in text if '\u0600' <= char <= '\u06FF')
+    # Arabic Unicode ranges (different from Persian)
+    arabic_chars = sum(1 for char in text if '\u0750' <= char <= '\u077F' or '\uFB50' <= char <= '\uFDFF' or '\uFE70' <= char <= '\uFEFF')
     
-    while True:
-        query = input("\nEnter your query (or Ctrl+C to exit): ").strip()
-        if not query:
-            continue
+    total_chars = len(text.strip())
+    if total_chars == 0:
+        return 'en'
+    
+    persian_ratio = persian_chars / total_chars
+    arabic_ratio = arabic_chars / total_chars
+    
+    if persian_ratio > 0.3:
+        return 'fa'  # Persian/Farsi
+    elif arabic_ratio > 0.3:
+        return 'ar'  # Arabic
+    else:
+        return 'en'  # Default to English for Latin scripts
 
-        print("🔍 Extracting keywords...")
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/api/query', methods=['POST'])
+def query():
+    try:
+        data = request.get_json()
+        user_query = data.get('query', '').strip()
+        
+        if not user_query:
+            return jsonify({'error': 'Empty query provided'}), 400
+        
+        if not VECTOR_SEARCH_AVAILABLE:
+            return jsonify({'error': 'Vector search not available. Please run embedding.py first.'}), 500
+        
+        # Detect language for RTL/LTR
+        detected_lang = detect_language(user_query)
+        
+        # Log the query
+        timestamp = datetime.datetime.now().isoformat()
+        log_to_file(f"[{timestamp}] [Query] {user_query}")
+        
+        # Extract keywords
         keyword_prompt = f"""
 Extract only the main keywords or key phrases from the following user query for a vector search.
 Return keywords separated by commas, no explanation.
 
-Query: {query}
+Query: {user_query}
 """
-        keywords = run_llm(keyword_prompt)
-        print(f"📝 Keywords extracted: {keywords}")
-        log_to_file(f"[{datetime.datetime.now()}] [Query] {query}")
-        log_to_file(f"[{datetime.datetime.now()}] [Search Keywords] {keywords}")
-
-        print("📚 Searching documents...")
-        top_k_docs = search_top_k(keywords)
-        print(f"📄 Found {len(top_k_docs)} relevant document chunks")
         
-        log_to_file(f"[{datetime.datetime.now()}] [Search Results]:")
+        keywords = run_llm(keyword_prompt)
+        log_to_file(f"[{timestamp}] [Search Keywords] {keywords}")
+        
+        # Search documents
+        top_k_docs = search_top_k(keywords)
+        
+        # Log search results
+        log_to_file(f"[{timestamp}] [Search Results]:")
         for doc in top_k_docs:
             log_to_file(f"- File: {doc['file']} (Chunk {doc['chunk_index']})")
             log_to_file(f"  Similarity: {doc['similarity']:.4f}")
-            log_to_file(f"  Text: {doc['text']}\n")
-
+            log_to_file(f"  Text: {doc['text'][:200]}...")
+        
         # Build context from documents
         document_context = "\n\n".join([
             f"[Document: {doc['file']}, Chunk {doc['chunk_index']}, Similarity: {doc['similarity']:.3f}]\n{doc['text']}"
             for doc in top_k_docs
         ])
-
+        
         # Build conversation history context
         history_context = ""
         if conversation_history:
             history_context = "\n\nPrevious conversation context:\n"
-            for i, (prev_q, prev_a) in enumerate(conversation_history[-3:], 1):  # Last 3 exchanges
+            for i, (prev_q, prev_a) in enumerate(conversation_history[-3:], 1):
                 history_context += f"\nPrevious Q{i}: {prev_q}\nPrevious A{i}: {prev_a}\n"
-
-        print("🤖 Generating answer...")
+        
+        # Generate answer
         prompt = f"""
 You are a knowledgeable assistant answering the user's question using the provided information.
 
@@ -206,7 +255,7 @@ Instructions:
 - Be concise, friendly, and conversational
 - Reference specific documents when relevant
 
-Current Question: {query}
+Current Question: {user_query}
 
 Document Context:
 {document_context}
@@ -215,26 +264,66 @@ Document Context:
 
 Please provide your detailed answer:
 """
-        answer = run_llm(prompt)
-
-        # Store this exchange in conversation history
-        conversation_history.append((query, answer))
         
-        # Keep only last 5 exchanges to prevent context from getting too long
+        answer = run_llm(prompt)
+        
+        # Store this exchange in conversation history
+        conversation_history.append((user_query, answer))
+        
+        # Keep only last 5 exchanges
         if len(conversation_history) > 5:
-            conversation_history = conversation_history[-5:]
+            conversation_history[:] = conversation_history[-5:]
+        
+        log_to_file(f"[{timestamp}] [Answer] {answer}")
+        
+        return jsonify({
+            'answer': answer,
+            'keywords': keywords,
+            'documents': top_k_docs,
+            'language': detected_lang,
+            'timestamp': timestamp
+        })
+        
+    except Exception as e:
+        error_msg = f"Error processing query: {str(e)}"
+        log_to_file(f"[{datetime.datetime.now().isoformat()}] [Error] {error_msg}")
+        return jsonify({'error': error_msg}), 500
 
-        log_to_file(f"[{datetime.datetime.now()}] [Answer] {answer}")
 
-        print("\n" + "="*60)
-        print("📖 ANSWER:")
-        print("="*60)
-        print(answer)
-        print("="*60)
-        print(f"💾 Conversation history: {len(conversation_history)} exchanges stored")
+@app.route('/api/logs')
+def get_logs():
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                logs = f.readlines()
+            # Return last 100 lines
+            return jsonify({'logs': logs[-100:]})
+        else:
+            return jsonify({'logs': []})
+    except Exception as e:
+        return jsonify({'error': f"Error reading logs: {str(e)}"}), 500
 
-except KeyboardInterrupt:
-    print("\n👋 Goodbye!")
-except Exception as e:
-    print(f"\n❌ Error: {e}")
-    print("Please check your configuration and try again.")
+
+@app.route('/api/stats')
+def get_stats():
+    try:
+        if VECTOR_SEARCH_AVAILABLE:
+            stats = get_document_stats()
+            return jsonify(stats)
+        else:
+            return jsonify({'error': 'Vector search not available'})
+    except Exception as e:
+        return jsonify({'error': f"Error getting stats: {str(e)}"}), 500
+
+
+@app.route('/api/clear-history', methods=['POST'])
+def clear_history():
+    global conversation_history
+    conversation_history.clear()
+    return jsonify({'message': 'Conversation history cleared'})
+
+
+if __name__ == '__main__':
+    print(f"🚀 Starting RAG Server with {LLM_PROVIDER} ({LLM_MODEL})")
+    print(f"📊 Vector search available: {VECTOR_SEARCH_AVAILABLE}")
+    app.run(debug=True, host='0.0.0.0', port=5000)

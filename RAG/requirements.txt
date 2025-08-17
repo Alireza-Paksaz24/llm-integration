@@ -1,2 +1,16 @@
 sentence-transformers
+dotenv
+# Core RAG System Dependencies
+sentence-transformers
+scikit-learn
+numpy
+python-dotenv
+
+# LLM Integration
+requests
+
+# File Processing
 PyPDF2
+
+# Server Back-end
+flask

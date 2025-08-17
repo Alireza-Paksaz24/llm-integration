@@ -1,1 +1,15 @@
-﻿RAG/models
+﻿#Embedding models
+RAG/models
+#Datas
+RAG/data
+RAG/processed_data
+#Embeddings
+RAG/embeddings.json
+
+#PowerPint
+RAG/RAG_Project.pptx
+RAG/~$RAG_Project.pptx
+
+# Log
+query_log.txt
+RAG/query_log.txt

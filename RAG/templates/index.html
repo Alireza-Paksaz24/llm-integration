@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #f0f0f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 1.1em;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 30px;
+            flex: 1;
+        }
+
+        .chat-section {
+            flex: 2;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logs-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .section-title {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            min-height: 400px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message.assistant {
+            text-align: left;
+        }
+
+        .message.rtl {
+            direction: rtl;
+            text-align: right;
+        }
+
+        .message.ltr {
+            direction: ltr;
+            text-align: left;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            max-width: 80%;
+            padding: 15px 20px;
+            border-radius: 20px;
+            word-wrap: break-word;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .user .message-bubble {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .assistant .message-bubble {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .documents-info {
+            margin-top: 10px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .document-chip {
+            display: inline-block;
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            padding: 4px 8px;
+            border-radius: 10px;
+            margin: 2px;
+            font-size: 0.8em;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        #queryInput {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+            resize: none;
+            min-height: 50px;
+            max-height: 150px;
+            font-family: inherit;
+        }
+
+        #queryInput:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #sendButton {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            min-width: 100px;
+        }
+
+        #sendButton:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #sendButton:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .log-entry.query {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .log-entry.answer {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+        }
+
+        .log-entry.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+        }
+
+        .btn.secondary {
+            background: #718096;
+        }
+
+        .btn.secondary:hover {
+            background: #4a5568;
+        }
+
+        .stats {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .language-indicator {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .input-container {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            #sendButton {
+                width: 100%;
+            }
+        }
+
+        /* Persian/Farsi and Arabic font support */
+        .rtl {
+            font-family: 'Tahoma', 'Arial Unicode MS', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 RAG Chat System</h1>
+            <p>Intelligent Document Search & Question Answering</p>
+        </div>
+
+        <div class="main-content">
+            <div class="chat-section">
+                <div class="section-title">
+                    <span>💬</span>
+                    <span>Conversation</span>
+                </div>
+                
+                <div class="stats" id="stats">
+                    <div>📊 Loading system statistics...</div>
+                </div>
+
+                <div class="chat-container" id="chatContainer">
+                    <div class="message assistant">
+                        <div class="message-bubble">
+                            Hello! I'm your RAG assistant. Ask me anything about your documents, and I'll search through them to provide accurate answers. I support multiple languages including English, Persian (فارسی), Arabic (العربية), and more!
+                        </div>
+                        <div class="message-time">System Message</div>
+                    </div>
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <div>Processing your query...</div>
+                </div>
+
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="queryInput" 
+                            placeholder="Type your question here... (English, فارسی, العربية, Español...)"
+                            rows="1"
+                        ></textarea>
+                        <div class="language-indicator" id="langIndicator">EN</div>
+                    </div>
+                    <button id="sendButton" type="button">
+                        <span id="buttonText">Send</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- <div class="logs-section">
+                <div class="section-title">
+                    <span>📋</span>
+                    <span>System Logs</span>
+                </div>
+
+                <div class="controls">
+                    <button class="btn" id="refreshLogs">Refresh Logs</button>
+                    <button class="btn secondary" id="clearLogs">Clear History</button>
+                    <button class="btn secondary" id="clearChat">Clear Chat</button>
+                </div>
+
+                <div class="logs-container" id="logsContainer">
+                    <div>Loading logs...</div>
+                </div>
+            </div> -->
+        </div>
+    </div>
+
+    <script>
+        class RAGChatApp {
+            constructor() {
+                this.chatContainer = document.getElementById('chatContainer');
+                this.queryInput = document.getElementById('queryInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.loading = document.getElementById('loading');
+                this.logsContainer = document.getElementById('logsContainer');
+                this.langIndicator = document.getElementById('langIndicator');
+                this.statsContainer = document.getElementById('stats');
+
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadStats();
+                this.loadLogs();
+                
+                // Auto-resize textarea
+                this.queryInput.addEventListener('input', this.autoResizeTextarea.bind(this));
+                
+                // Language detection
+                this.queryInput.addEventListener('input', this.detectLanguage.bind(this));
+            }
+
+            bindEvents() {
+                this.sendButton.addEventListener('click', () => this.sendQuery());
+                this.queryInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendQuery();
+                    }
+                });
+
+                document.getElementById('refreshLogs').addEventListener('click', () => this.loadLogs());
+                document.getElementById('clearLogs').addEventListener('click', () => this.clearHistory());
+                document.getElementById('clearChat').addEventListener('click', () => this.clearChat());
+            }
+
+            detectLanguage(event) {
+                const text = event.target.value;
+                let detectedLang = 'EN';
+                
+                // Simple language detection
+                const persianChars = (text.match(/[\u0600-\u06FF]/g) || []).length;
+                const arabicChars = (text.match(/[\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
+                const totalChars = text.replace(/\s/g, '').length;
+                
+                if (totalChars > 0) {
+                    const persianRatio = persianChars / totalChars;
+                    const arabicRatio = arabicChars / totalChars;
+                    
+                    if (persianRatio > 0.3) {
+                        detectedLang = 'فا';
+                    } else if (arabicRatio > 0.3) {
+                        detectedLang = 'عر';
+                    }
+                }
+                
+                this.langIndicator.textContent = detectedLang;
+                
+                // Set direction
+                if (detectedLang === 'فا' || detectedLang === 'عر') {
+                    this.queryInput.style.direction = 'rtl';
+                    this.queryInput.style.textAlign = 'right';
+                } else {
+                    this.queryInput.style.direction = 'ltr';
+                    this.queryInput.style.textAlign = 'left';
+                }
+            }
+
+            autoResizeTextarea() {
+                this.queryInput.style.height = 'auto';
+                this.queryInput.style.height = Math.min(this.queryInput.scrollHeight, 150) + 'px';
+            }
+
+            async sendQuery() {
+                const query = this.queryInput.value.trim();
+                if (!query) return;
+
+                this.addMessage('user', query);
+                this.queryInput.value = '';
+                this.queryInput.style.height = '50px';
+                this.showLoading(true);
+
+                try {
+                    const response = await fetch('/api/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ query })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.addMessage('assistant', data.answer, {
+                            keywords: data.keywords,
+                            documents: data.documents,
+                            language: data.language,
+                            timestamp: data.timestamp
+                        });
+                    } else {
+                        this.addMessage('assistant', `Error: ${data.error}`, { error: true });
+                    }
+                } catch (error) {
+                    this.addMessage('assistant', `Network error: ${error.message}`, { error: true });
+                } finally {
+                    this.showLoading(false);
+                    this.loadLogs(); // Refresh logs after query
+                }
+            }
+
+            addMessage(sender, content, metadata = {}) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender}`;
+                
+                // Set direction based on language
+                if (metadata.language === 'fa' || metadata.language === 'ar') {
+                    messageDiv.classList.add('rtl');
+                } else {
+                    messageDiv.classList.add('ltr');
+                }
+
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = 'message-bubble';
+                bubbleDiv.textContent = content;
+
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = metadata.timestamp ? 
+                    new Date(metadata.timestamp).toLocaleTimeString() : 
+                    new Date().toLocaleTimeString();
+
+                messageDiv.appendChild(bubbleDiv);
+                messageDiv.appendChild(timeDiv);
+
+                // Add document information for assistant messages
+                if (sender === 'assistant' && metadata.documents && metadata.documents.length > 0) {
+                    const docsDiv = document.createElement('div');
+                    docsDiv.className = 'documents-info';
+                    docsDiv.innerHTML = `
+                        <div>📚 Found ${metadata.documents.length} relevant documents:
+                        ${metadata.documents.map(doc => 
+                            `<span class="document-chip">${doc.file.split('/').pop()} (${(doc.similarity * 100).toFixed(1)}%)</span>`
+                        ).join('')}
+                        </div>
+                        ${metadata.keywords ? `<div>🔍 Keywords: ${metadata.keywords}</div>` : ''}
+                    `;
+                    messageDiv.appendChild(docsDiv);
+                }
+
+                this.chatContainer.appendChild(messageDiv);
+                this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
+            }
+
+            showLoading(show) {
+                this.loading.style.display = show ? 'block' : 'none';
+                this.sendButton.disabled = show;
+                document.getElementById('buttonText').textContent = show ? 'Processing...' : 'Send';
+            }
+
+            async loadStats() {
+                try {
+                    const response = await fetch('/api/stats');
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        this.statsContainer.innerHTML = `
+                            <div>📊 <strong>Document Statistics:</strong></div>
+                            <div>📄 Total Files: ${data.total_files || 'N/A'}</div>
+                            <div>📝 Total Chunks: ${data.total_chunks || 'N/A'}</div>
+                            <div>📈 Avg Chunks/File: ${data.avg_chunks_per_file ? data.avg_chunks_per_file.toFixed(1) : 'N/A'}</div>
+                        `;
+                    } else {
+                        this.statsContainer.innerHTML = `<div>⚠️ ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    this.statsContainer.innerHTML = `<div>❌ Error loading stats: ${error.message}</div>`;
+                }
+            }
+
+            async loadLogs() {
+                try {
+                    const response = await fetch('/api/logs');
+                    const data = await response.json();
+                    
+                    if (response.ok && data.logs) {
+                        this.logsContainer.innerHTML = data.logs.map(log => {
+                            let className = 'log-entry';
+                            if (log.includes('[Query]')) className += ' query';
+                            else if (log.includes('[Answer]')) className += ' answer';
+                            else if (log.includes('[Error]')) className += ' error';
+                            
+                            return `<div class="${className}">${this.escapeHtml(log)}</div>`;
+                        }).join('') || '<div>No logs available</div>';
+                        
+                        this.logsContainer.scrollTop = this.logsContainer.scrollHeight;
+                    } else {
+                        this.logsContainer.innerHTML = `<div>Error loading logs: ${data.error || 'Unknown error'}</div>`;
+                    }
+                } catch (error) {
+                    this.logsContainer.innerHTML = `<div>Network error loading logs: ${error.message}</div>`;
+                }
+            }
+
+            async clearHistory() {
+                if (confirm('Are you sure you want to clear conversation history?')) {
+                    try {
+                        const response = await fetch('/api/clear-history', { method: 'POST' });
+                        const data = await response.json();
+                        
+                        if (response.ok) {
+                            alert('Conversation history cleared!');
+                        } else {
+                            alert(`Error: ${data.error}`);
+                        }
+                    } catch (error) {
+                        alert(`Network error: ${error.message}`);
+                    }
+                }
+            }
+
+            clearChat() {
+                if (confirm('Are you sure you want to clear the chat display?')) {
+                    this.chatContainer.innerHTML = `
+                        <div class="message assistant">
+                            <div class="message-bubble">
+                                Chat cleared! Ask me anything about your documents.
+                            </div>
+                            <div class="message-time">System Message</div>
+                        </div>
+                    `;
+                }
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Initialize app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new RAGChatApp();
+        });
+    </script>
+</body>
+</html>
