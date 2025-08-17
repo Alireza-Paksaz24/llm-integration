@@ -205,7 +205,7 @@ Instructions:
 - If insufficient information, say so politely and suggest what might help
 - Be concise, friendly, and conversational
 - Reference specific documents when relevant
-- Last Results are not important if Question doesn't related to it
+- Last Results are not important if Question doesn't related to it.
 
 Current Question: {query}
 

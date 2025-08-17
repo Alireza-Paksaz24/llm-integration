@@ -9,9 +9,13 @@ from dotenv import load_dotenv
 import threading
 import queue
 import time
+from pathlib import Path
 
 # Add RAG folder to path
-# sys.path.append('../')
+sys.path.append('../')
+
+root_dir = Path(__file__).parent.parent  # Gets the root directory relative to this file
+sys.path.append(str(root_dir))
 
 # Fix tokenizers warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -94,7 +98,7 @@ def run_lmstudio(prompt: str) -> str:
             text=True, 
             encoding="utf-8",
             errors="replace",
-            timeout=60
+            timeout=120
         )
         
         if result.returncode != 0:
