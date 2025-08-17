@@ -205,12 +205,14 @@ Instructions:
 - If insufficient information, say so politely and suggest what might help
 - Be concise, friendly, and conversational
 - Reference specific documents when relevant
+- Last Results are not important if Question doesn't related to it
 
 Current Question: {query}
 
 Document Context:
 {document_context}
 
+Last Result:
 {history_context}
 
 Please provide your detailed answer:
